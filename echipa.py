@@ -12,11 +12,10 @@ def agent(nume, rol, mesaj):
             {"role": "user", "content": mesaj}
         ]}
     )
-   data = r.json()
+    data = r.json()
     if "choices" in data:
         return data["choices"][0]["message"]["content"]
-    else:
-        return "Lucrez la răspuns... " + str(data.get("error", {}).get("message", ""))
+    return "Eroare: " + str(data.get("error", {}).get("message", str(data)))
 
 HTML = """<!DOCTYPE html>
 <html>
