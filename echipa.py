@@ -34,25 +34,80 @@ h1 span.d { color: #7ed321; }
 .sonia { background: #0f3460; align-self: flex-start; border-left: 3px solid #f5a623; border-bottom-left-radius: 4px; }
 .delia { background: #0f3460; align-self: flex-start; border-left: 3px solid #7ed321; border-bottom-left-radius: 4px; }
 .nume { font-weight: bold; font-size: 0.75em; margin-bottom: 4px; opacity: 0.85; }
-#input-area { display: flex; padding: 10px; gap: 8px; background: #16213e; border-top: 1px solid #333; }
+#input-area { display: flex; padding: 10px; gap: 8px; background: #16213e; border-top: 1px solid #333; align-items: center; }
 #mesaj { flex:1; padding: 12px 15px; border-radius: 25px; border: none; background: #0f3460; color: white; font-size: 1em; outline: none; }
 #mesaj::placeholder { color: #aaa; }
-#trimite { padding: 12px 18px; border-radius: 25px; border: none; background: #e94560; color: white; cursor: pointer; font-size: 1em; white-space: nowrap; }
+#trimite { padding: 12px 18px; border-radius: 25px; border: none; background: #e94560; color: white; cursor: pointer; font-size: 1em; }
+#microfon { padding: 12px; border-radius: 50%; border: none; background: #0f3460; color: white; cursor: pointer; font-size: 1.2em; width: 48px; height: 48px; }
+#microfon.activ { background: #e94560; animation: pulse 1s infinite; }
+@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .loading { opacity: 0.6; font-style: italic; }
 </style>
 </head>
 <body>
 <h1>🤖 <span class="t">Tania</span> · <span class="s">Sonia</span> · <span class="d">Delia</span></h1>
 <div id="chat">
-  <div class="mesaj tania"><div class="nume">🔍 Tania</div>Salut! Scrie o temă și eu cercetez!</div>
+  <div class="mesaj tania"><div class="nume">🔍 Tania</div>Salut! Scrie sau vorbește o temă!</div>
   <div class="mesaj sonia"><div class="nume">✍️ Sonia</div>Eu scriu textul frumos!</div>
   <div class="mesaj delia"><div class="nume">🧐 Delia</div>Eu verific și îmbunătățesc!</div>
 </div>
 <div id="input-area">
-  <input id="mesaj" type="text" placeholder="Scrie tema ta..." onkeypress="if(event.key==='Enter') trimite()">
+  <button id="microfon" onclick="toggleVoice()" title="Apasă să vorbești">🎤</button>
+  <input id="mesaj" type="text" placeholder="Scrie sau vorbește..." onkeypress="if(event.key==='Enter') trimite()">
   <button id="trimite" onclick="trimite()">Trimite ▶</button>
 </div>
 <script>
+let recunoastere = null;
+let vorbeste = false;
+
+function initVoice() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    document.getElementById('microfon').style.display = 'none';
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recunoastere = new SR();
+  recunoastere.lang = 'ro-RO';
+  recunoastere.continuous = false;
+  recunoastere.interimResults = false;
+  recunoastere.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('mesaj').value = text;
+    toggleVoice();
+    trimite();
+  };
+  recunoastere.onend = () => {
+    vorbeste = false;
+    document.getElementById('microfon').classList.remove('activ');
+    document.getElementById('microfon').textContent = '🎤';
+  };
+}
+
+function toggleVoice() {
+  if (!recunoastere) return;
+  if (vorbeste) {
+    recunoastere.stop();
+    vorbeste = false;
+    document.getElementById('microfon').classList.remove('activ');
+    document.getElementById('microfon').textContent = '🎤';
+  } else {
+    recunoastere.start();
+    vorbeste = true;
+    document.getElementById('microfon').classList.add('activ');
+    document.getElementById('microfon').textContent = '🔴';
+  }
+}
+
+function vorbireText(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'ro-RO';
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+}
+
 function adauga(clasa, nume, text) {
   const chat = document.getElementById('chat');
   const div = document.createElement('div');
@@ -62,6 +117,7 @@ function adauga(clasa, nume, text) {
   chat.scrollTop = chat.scrollHeight;
   return div;
 }
+
 async function trimite() {
   const input = document.getElementById('mesaj');
   const tema = input.value.trim();
@@ -76,7 +132,10 @@ async function trimite() {
   t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
   s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
   d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
+  vorbireText(data.delia);
 }
+
+initVoice();
 </script>
 </body>
 </html>"""
