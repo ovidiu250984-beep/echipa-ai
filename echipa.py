@@ -1,7 +1,7 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json, requests
 
-KEY = "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"
+KEY = "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"
 
 def agent(nume, rol, mesaj):
     r = requests.post(
