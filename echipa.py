@@ -7,7 +7,7 @@ def agent(nume, rol, mesaj):
     r = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-        json={"model": "openrouter/free", "messages": [
+        json={"model": "meta-llama/llama-3-8b-instruct", "messages": [
             {"role": "system", "content": f"Esti {nume}. {rol}. Raspunde DOAR in romana. Fii concis, maxim 3-4 propozitii."},
             {"role": "user", "content": mesaj}
         ]}
