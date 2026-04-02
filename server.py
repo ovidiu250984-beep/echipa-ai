@@ -2,7 +2,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json, requests, os
 
 KEY = os.environ.get("OPENROUTER_KEY", "")
-REPLICATE_KEY = os.environ.get("REPLICATE_KEY", "")
+REPLICATE_KEY = os.environ.get("REPLICATE_KEY", "").strip()
 
 def agent(nume, rol, mesaj):
     r = requests.post(
