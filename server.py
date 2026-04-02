@@ -44,6 +44,7 @@ h1 span.d { color: #7ed321; }
 #trimite { padding: 12px 18px; border-radius: 25px; border: none; background: #e94560; color: white; cursor: pointer; font-size: 1em; }
 #microfon { padding: 12px; border-radius: 50%; border: none; background: #0f3460; color: white; cursor: pointer; font-size: 1.2em; width: 48px; height: 48px; }
 #microfon.activ { background: #e94560; animation: pulse 1s infinite; }
+#atasare { padding: 12px; border-radius: 50%; border: none; background: #0f3460; color: white; cursor: pointer; font-size: 1.2em; width: 48px; height: 48px; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .loading { opacity: 0.6; font-style: italic; }
 </style>
@@ -56,13 +57,16 @@ h1 span.d { color: #7ed321; }
   <div class="mesaj delia"><div class="nume">🧐 Delia</div>Eu verific și îmbunătățesc!</div>
 </div>
 <div id="input-area">
-<input type="file" id="fisier" accept="image/*,.pdf,.doc,.docx,.txt" style="display:none" onchange="trimiseFisier()">
-<button onclick="document.getElementById('fisier').click()" style="padding:12px;border-radius:50%;border:none;background:#0f3460;color:white;cursor:pointer;font-size:1.2em;width:48px;height:48px;">📎</button>
+  <input type="file" id="fisier" accept="/" style="display:none" onchange="trimiseFisier()">
+  <button id="atasare" onclick="document.getElementById('fisier').click()">📎</button>
   <button id="microfon" onclick="toggleVoice()" title="Apasă să vorbești">🎤</button>
   <input id="mesaj" type="text" placeholder="Scrie sau vorbește..." onkeypress="if(event.key==='Enter') trimite()">
   <button id="trimite" onclick="trimite()">Trimite ▶</button>
 </div>
 <script>
+let recunoastere = null;
+let vorbeste = false;
+
 async function trimiseFisier() {
   const fisier = document.getElementById('fisier').files[0];
   if (!fisier) return;
@@ -79,8 +83,6 @@ async function trimiseFisier() {
   d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
   vorbireText(data.delia);
 }
-let recunoastere = null;
-let vorbeste = false;
 
 function initVoice() {
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -164,32 +166,28 @@ initVoice();
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args): pass
+
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
         self.wfile.write(HTML.encode())
-        def do_upload(self):
-        import cgi
-        form = cgi.FieldStorage(
-        fp=self.rfile,
-        headers=self.headers,
-        environ={'REQUEST_METHOD': 'POST'}
-    )
-    fisier = form['fisier']
-    continut = f"Fisierul se numeste: {fisier.filename}. Analizeaza si descrie continutul."
-    tania = agent("Tania", "Analizezi fisiere si descrii continutul", continut)
-    sonia = agent("Sonia", "Scrii despre: " + tania, continut)
-    delia = agent("Delia", "Dai feedback pentru: " + sonia, continut)
-    self.send_response(200)
-    self.send_header('Content-type', 'application/json')
-    self.end_headers()
-    self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
+
     def do_POST(self):
-    if self.path == '/upload':
-        self.do_upload()
-        return
-    data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path == '/upload':
+            content_length = int(self.headers['Content-Length'])
+            body = self.rfile.read(content_length)
+            filename = self.headers.get('X-Filename', 'fisier')
+            continut = f"Fisierul se numeste: {filename}. Analizeaza si descrie ce ar putea contine."
+            tania = agent("Tania", "Analizezi fisiere si descrii continutul", continut)
+            sonia = agent("Sonia", "Scrii despre: " + tania, continut)
+            delia = agent("Delia", "Dai feedback pentru: " + sonia, continut)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
+            return
+        data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         tema = data['tema']
         tania = agent("Tania", "Cercetezi subiecte si dai 3 idei principale", tema)
         sonia = agent("Sonia", "Scrii texte frumoase bazate pe: " + tania, tema)
