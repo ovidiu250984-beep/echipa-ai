@@ -169,6 +169,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
         self.wfile.write(HTML.encode())
+        def do_upload(self):
+    import cgi
+    form = cgi.FieldStorage(
+        fp=self.rfile,
+        headers=self.headers,
+        environ={'REQUEST_METHOD': 'POST'}
+    )
+    fisier = form['fisier']
+    continut = f"Fisierul se numeste: {fisier.filename}. Analizeaza si descrie continutul."
+    tania = agent("Tania", "Analizezi fisiere si descrii continutul", continut)
+    sonia = agent("Sonia", "Scrii despre: " + tania, continut)
+    delia = agent("Delia", "Dai feedback pentru: " + sonia, continut)
+    self.send_response(200)
+    self.send_header('Content-type', 'application/json')
+    self.end_headers()
+    self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         tema = data['tema']
