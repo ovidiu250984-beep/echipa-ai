@@ -63,6 +63,22 @@ h1 span.d { color: #7ed321; }
   <button id="trimite" onclick="trimite()">Trimite ▶</button>
 </div>
 <script>
+async function trimiseFisier() {
+  const fisier = document.getElementById('fisier').files[0];
+  if (!fisier) return;
+  adauga('tu', 'Tu', '📎 ' + fisier.name);
+  const t = adauga('tania', '🔍 Tania', '<span class="loading">analizează fișierul...</span>');
+  const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
+  const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
+  const form = new FormData();
+  form.append('fisier', fisier);
+  const r = await fetch('/upload', {method:'POST', body: form});
+  const data = await r.json();
+  t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
+  s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
+  d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
+  vorbireText(data.delia);
+}
 let recunoastere = null;
 let vorbeste = false;
 
