@@ -170,8 +170,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(HTML.encode())
         def do_upload(self):
-    import cgi
-    form = cgi.FieldStorage(
+        import cgi
+        form = cgi.FieldStorage(
         fp=self.rfile,
         headers=self.headers,
         environ={'REQUEST_METHOD': 'POST'}
