@@ -186,7 +186,10 @@ class Handler(BaseHTTPRequestHandler):
     self.end_headers()
     self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
     def do_POST(self):
-        data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+    if self.path == '/upload':
+        self.do_upload()
+        return
+    data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         tema = data['tema']
         tania = agent("Tania", "Cercetezi subiecte si dai 3 idei principale", tema)
         sonia = agent("Sonia", "Scrii texte frumoase bazate pe: " + tania, tema)
