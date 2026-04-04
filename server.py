@@ -167,38 +167,38 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(HTML.encode())
 
-   def do_POST(self):
-    if self.path == '/chat-imagine':
-        data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        tema = data['tema']
-        base64_img = data['base64']
-        tip = data['tip']
-        r = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-            json={"model": "google/gemini-2.0-flash-exp:free", "messages": [
-                {"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:{tip};base64,{base64_img}"}},
-                    {"type": "text", "text": f"Esti un asistent AI. {tema}. Raspunde in romana."}
+  def do_POST(self):
+        if self.path == '/chat-imagine':
+            data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            tema = data['tema']
+            base64_img = data['base64']
+            tip = data['tip']
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
+                json={"model": "google/gemini-2.0-flash-exp:free", "messages": [
+                    {"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{tip};base64,{base64_img}"}},
+                        {"type": "text", "text": f"Esti un asistent AI. {tema}. Raspunde in romana."}
+                    ]}
                 ]}
-            ]}
-        )
+            )
+         
+            result = r.json()
+            if "choices" in result:
+                raspuns = result["choices"][0]["message"]["content"]
+            else:
+                raspuns = "Eroare: " + str(result)
         
-        result = r.json()
-        if "choices" in result:
-            raspuns = result["choices"][0]["message"]["content"]
-        else:
-            raspuns = "Eroare: " + str(result)
+            tania = raspuns
+            sonia = agent("Sonia", "Scrii frumos despre: " + raspuns, tema)
+            delia = agent("Delia", "Dai feedback pentru: " + sonia, tema)
         
-        tania = raspuns
-        sonia = agent("Sonia", "Scrii frumos despre: " + raspuns, tema)
-        delia = agent("Delia", "Dai feedback pentru: " + sonia, tema)
-        
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
-        return
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
+            return
         if self.path == '/upload':
             content_length = int(self.headers['Content-Length'])
             body = self.rfile.read(content_length)
