@@ -167,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(HTML.encode())
 
-  def do_POST(self):
+    def do_POST(self):
         if self.path == '/chat-imagine':
             data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             tema = data['tema']
