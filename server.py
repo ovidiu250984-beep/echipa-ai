@@ -150,6 +150,22 @@ async function trimite() {
   if (!tema) return;
   input.value = '';
   adauga('tu', 'Tu', tema);
+  if (window.fisierSelectat) {
+    const form = new FormData();
+    form.append('fisier', window.fisierSelectat);
+    form.append('descriere', tema);
+    window.fisierSelectat = null;
+    const t = adauga('tania', '🔍 Tania', '<span class="loading">analizează...</span>');
+    const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
+    const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
+    const r = await fetch('/upload', {method:'POST', body: form});
+    const data = await r.json();
+    t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
+    s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
+    d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
+    vorbireText(data.delia);
+    return;
+  }
   const t = adauga('tania', '🔍 Tania', '<span class="loading">cercetează...</span>');
   const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
   const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
