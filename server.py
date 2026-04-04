@@ -70,7 +70,9 @@ let vorbeste = false;
 async function trimiseFisier() {
   const fisier = document.getElementById('fisier').files[0];
   if (!fisier) return;
-  adauga('tu', 'Tu', '📎 ' + fisier.name);
+  const descriere = prompt('📎 ' + fisier.name + '\n\nCe dorești să fac cu acest fișier?');
+  if (!descriere) return;
+  adauga('tu', 'Tu', '📎 ' + fisier.name + ' — ' + descriere);
   const t = adauga('tania', '🔍 Tania', '<span class="loading">analizează fișierul...</span>');
   const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
   const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
