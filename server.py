@@ -57,7 +57,7 @@ h1 span.d { color: #7ed321; }
   <div class="mesaj delia"><div class="nume">🧐 Delia</div>Eu verific și îmbunătățesc!</div>
 </div>
 <div id="input-area">
-  <input type="file" id="fisier" accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xls,.xlsx" style="display:none" onchange="trimiseFisier()">
+  <input type="file" id="fisier" accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx" style="display:none" onchange="trimiseFisier()">
   <button id="atasare" onclick="document.getElementById('fisier').click()">📎</button>
   <button id="microfon" onclick="toggleVoice()" title="Apasă să vorbești">🎤</button>
   <input id="mesaj" type="text" placeholder="Scrie sau vorbește..." onkeypress="if(event.key==='Enter') trimite()">
