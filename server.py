@@ -134,28 +134,14 @@ function adauga(clasa, nume, text) {
   return div;
 }
 
-async function trimite() {
+async function trimiseFisier() {
+  const fisier = document.getElementById('fisier').files[0];
+  if (!fisier) return;
   const input = document.getElementById('mesaj');
-  const tema = input.value.trim();
-  if (!tema) return;
-  input.value = '';
-  adauga('tu', 'Tu', tema);
-  if (window.fisierSelectat) {
-    const form = new FormData();
-    form.append('fisier', window.fisierSelectat);
-    form.append('descriere', tema);
-    window.fisierSelectat = null;
-    const t = adauga('tania', '🔍 Tania', '<span class="loading">analizează...</span>');
-    const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
-    const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
-    const r = await fetch('/upload', {method:'POST', body: form});
-    const data = await r.json();
-    t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
-    s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
-    d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
-    vorbireText(data.delia);
-    return;
-  }
+  input.value = '📎 ' + fisier.name + ' — ';
+  input.focus();
+  window.fisierSelectat = fisier;
+}
   const t = adauga('tania', '🔍 Tania', '<span class="loading">cercetează...</span>');
   const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
   const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
