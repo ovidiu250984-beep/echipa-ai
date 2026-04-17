@@ -8,10 +8,13 @@ def agent(nume, rol, mesaj):
     r = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-        json={"role": "system", "content": f"Esti {nume}. {rol}. IMPORTANT: Raspunde EXCLUSIV in limba romana. Foloseste diacritice corecte: ă, â, î, ș, ț. Raspunsul tau trebuie sa fie 100% in romana, fara cuvinte in alte limbi."}, "messages": [
-            {"role": "system", "content": f"Esti {nume}. {rol}. Raspunde DOAR in limba romana literara, corecta gramatical, cu diacritice corecte (ă, â, î, ș, ț). Nu folosi cuvinte straine. Fii concis, maxim 3-4 propozitii."},
-            {"role": "user", "content": mesaj}
-        ]}
+        json={
+            "model": "openrouter/free",
+            "messages": [
+                {"role": "system", "content": "Esti " + nume + ". " + rol + ". IMPORTANT: Raspunde EXCLUSIV in limba romana. Foloseste diacritice corecte: a cu caciula, a cu capita, i cu capita, s cu virgula, t cu virgula. Raspunsul tau trebuie sa fie 100% in romana, fara cuvinte in alte limbi."},
+                {"role": "user", "content": mesaj}
+            ]
+        }
     )
     data = r.json()
     if "choices" in data:
@@ -59,9 +62,9 @@ h1 span.d { color: #7ed321; }
 <div id="input-area">
   <input type="file" id="fisier" accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx" style="display:none" onchange="trimiseFisier()">
   <button id="atasare" onclick="document.getElementById('fisier').click()">📎</button>
-  <button id="microfon" onclick="toggleVoice()" title="Apasă să vorbești">🎤</button>
-  <input id="mesaj" type="text" placeholder="Scrie sau vorbește..." onkeypress="if(event.key==='Enter') trimite()">
-  <button id="trimite" onclick="trimite()">Trimite ▶</button>
+  <button id="microfon" onclick="toggleVoice()" title="Apasa sa vorbesti">🎤</button>
+  <input id="mesaj" type="text" placeholder="Scrie sau vorbeste..." onkeypress="if(event.key==='Enter') trimite()">
+  <button id="trimite" onclick="trimite()">Trimite</button>
 </div>
 <script>
 let recunoastere = null;
@@ -86,13 +89,13 @@ function initVoice() {
   recunoastere.lang = 'ro-RO';
   recunoastere.continuous = false;
   recunoastere.interimResults = false;
-  recunoastere.onresult = (e) => {
+  recunoastere.onresult = function(e) {
     const text = e.results[0][0].transcript;
     document.getElementById('mesaj').value = text;
     toggleVoice();
     trimite();
   };
-  recunoastere.onend = () => {
+  recunoastere.onend = function() {
     vorbeste = false;
     document.getElementById('microfon').classList.remove('activ');
     document.getElementById('microfon').textContent = '🎤';
@@ -117,11 +120,11 @@ function toggleVoice() {
 function vorbireText(text) {
   if (!('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'ro-RO';
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  window.speechSynthesis.speak(utterance);
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'ro-RO';
+  u.rate = 1;
+  u.pitch = 1;
+  window.speechSynthesis.speak(u);
 }
 
 function adauga(clasa, nume, text) {
@@ -140,21 +143,21 @@ async function trimite() {
   if (!tema) return;
   input.value = '';
   adauga('tu', 'Tu', tema);
-  const t = adauga('tania', '🔍 Tania', '<span class="loading">cercetează...</span>');
-  const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
-  const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
+  const t = adauga('tania', '🔍 Tania', '<span class="loading">cerceteaza...</span>');
+  const s = adauga('sonia', '✍️ Sonia', '<span class="loading">asteapta...</span>');
+  const d = adauga('delia', '🧐 Delia', '<span class="loading">asteapta...</span>');
 
   if (window.fisierSelectat) {
     const fisier = window.fisierSelectat;
     window.fisierSelectat = null;
     const reader = new FileReader();
-    reader.onload = async (e) => {
+    reader.onload = async function(e) {
       const base64 = e.target.result.split(',')[1];
       const tip = fisier.type;
       const r = await fetch('/chat-imagine', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({tema, base64, tip})
+        body: JSON.stringify({tema: tema, base64: base64, tip: tip})
       });
       const data = await r.json();
       t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
@@ -169,7 +172,7 @@ async function trimite() {
   const r = await fetch('/chat', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({tema})
+    body: JSON.stringify({tema: tema})
   });
   const data = await r.json();
   t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
@@ -201,12 +204,15 @@ class Handler(BaseHTTPRequestHandler):
             r = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-                json={"model": "google/gemini-2.0-flash-exp:free", "messages": [
-                    {"role": "user", "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:{tip};base64,{base64_img}"}},
-                        {"type": "text", "text": f"Esti un asistent AI. {tema}. Raspunde in romana corecta gramatical."}
-                    ]}
-                ]}
+                json={
+                    "model": "openrouter/free",
+                    "messages": [
+                        {"role": "user", "content": [
+                            {"type": "image_url", "image_url": {"url": "data:" + tip + ";base64," + base64_img}},
+                            {"type": "text", "text": "Esti un asistent AI. " + tema + ". Raspunde exclusiv in limba romana corecta gramatical."}
+                        ]}
+                    ]
+                }
             )
             result = r.json()
             if "choices" in result:
@@ -214,8 +220,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 raspuns = "Eroare: " + str(result)
             tania = raspuns
-            sonia = agent("Sonia", "Scrii frumos despre: " + raspuns, tema)
-            delia = agent("Delia", "Dai feedback pentru: " + sonia, tema)
+            sonia = agent("Sonia", "Scrii frumos despre", raspuns)
+            delia = agent("Delia", "Dai feedback pentru", sonia)
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
@@ -226,10 +232,10 @@ class Handler(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             body = self.rfile.read(content_length)
             filename = self.headers.get('X-Filename', 'fisier')
-            continut = f"Fisierul se numeste: {filename}. Analizeaza si descrie ce ar putea contine."
+            continut = "Fisierul se numeste: " + filename + ". Analizeaza si descrie ce ar putea contine."
             tania = agent("Tania", "Analizezi fisiere si descrii continutul", continut)
-            sonia = agent("Sonia", "Scrii despre: " + tania, continut)
-            delia = agent("Delia", "Dai feedback pentru: " + sonia, continut)
+            sonia = agent("Sonia", "Scrii despre", tania)
+            delia = agent("Delia", "Dai feedback pentru", sonia)
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
@@ -246,6 +252,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
 
-print("✅ Aplicatia porneste...")
-print("📱 Deschide in browser: http://localhost:8080")
+print("Aplicatia porneste...")
+print("Deschide in browser: http://localhost:8080")
 HTTPServer(('', 8080), Handler).serve_forever()
