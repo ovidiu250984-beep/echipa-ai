@@ -8,7 +8,7 @@ def agent(nume, rol, mesaj):
     r = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-        json={"model": "deepseek/deepseek-chat-v3-0324:free", "messages": [
+        json={"role": "system", "content": f"Esti {nume}. {rol}. IMPORTANT: Raspunde EXCLUSIV in limba romana. Foloseste diacritice corecte: ă, â, î, ș, ț. Raspunsul tau trebuie sa fie 100% in romana, fara cuvinte in alte limbi."}, "messages": [
             {"role": "system", "content": f"Esti {nume}. {rol}. Raspunde DOAR in limba romana literara, corecta gramatical, cu diacritice corecte (ă, â, î, ș, ț). Nu folosi cuvinte straine. Fii concis, maxim 3-4 propozitii."},
             {"role": "user", "content": mesaj}
         ]}
