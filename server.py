@@ -134,18 +134,43 @@ function adauga(clasa, nume, text) {
   return div;
 }
 
-async function trimiseFisier() {
-  const fisier = document.getElementById('fisier').files[0];
-  if (!fisier) return;
+async function trimite() {
   const input = document.getElementById('mesaj');
-  input.value = '📎 ' + fisier.name + ' — ';
-  input.focus();
-  window.fisierSelectat = fisier;
-}
+  const tema = input.value.trim();
+  if (!tema) return;
+  input.value = '';
+  adauga('tu', 'Tu', tema);
   const t = adauga('tania', '🔍 Tania', '<span class="loading">cercetează...</span>');
   const s = adauga('sonia', '✍️ Sonia', '<span class="loading">așteaptă...</span>');
   const d = adauga('delia', '🧐 Delia', '<span class="loading">așteaptă...</span>');
-  const r = await fetch('/chat', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({tema})});
+
+  if (window.fisierSelectat) {
+    const fisier = window.fisierSelectat;
+    window.fisierSelectat = null;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1];
+      const tip = fisier.type;
+      const r = await fetch('/chat-imagine', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({tema, base64, tip})
+      });
+      const data = await r.json();
+      t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
+      s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
+      d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
+      vorbireText(data.delia);
+    };
+    reader.readAsDataURL(fisier);
+    return;
+  }
+
+  const r = await fetch('/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tema})
+  });
   const data = await r.json();
   t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
   s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
@@ -179,26 +204,24 @@ class Handler(BaseHTTPRequestHandler):
                 json={"model": "google/gemini-2.0-flash-exp:free", "messages": [
                     {"role": "user", "content": [
                         {"type": "image_url", "image_url": {"url": f"data:{tip};base64,{base64_img}"}},
-                        {"type": "text", "text": f"Esti un asistent AI. {tema}. Raspunde in romana."}
+                        {"type": "text", "text": f"Esti un asistent AI. {tema}. Raspunde in romana corecta gramatical."}
                     ]}
                 ]}
             )
-         
             result = r.json()
             if "choices" in result:
                 raspuns = result["choices"][0]["message"]["content"]
             else:
                 raspuns = "Eroare: " + str(result)
-        
             tania = raspuns
             sonia = agent("Sonia", "Scrii frumos despre: " + raspuns, tema)
             delia = agent("Delia", "Dai feedback pentru: " + sonia, tema)
-        
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
             return
+
         if self.path == '/upload':
             content_length = int(self.headers['Content-Length'])
             body = self.rfile.read(content_length)
@@ -212,6 +235,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
             return
+
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         tema = data['tema']
         tania = agent("Tania", "Cercetezi subiecte si dai 3 idei principale", tema)
