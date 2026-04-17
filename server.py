@@ -2,16 +2,15 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json, requests, os
 
 KEY = os.environ.get("OPENROUTER_KEY", "").strip()
-REPLICATE_KEY = os.environ.get("REPLICATE_KEY", "").strip()
 
-def agent(nume, rol, mesaj):
+def agent(rol_sistem, mesaj):
     r = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
         json={
             "model": "openrouter/free",
             "messages": [
-                {"role": "system", "content": "Esti " + nume + ". " + rol + ". IMPORTANT: Raspunde EXCLUSIV in limba romana. Foloseste diacritice corecte: a cu caciula, a cu capita, i cu capita, s cu virgula, t cu virgula. Raspunsul tau trebuie sa fie 100% in romana, fara cuvinte in alte limbi."},
+                {"role": "system", "content": rol_sistem},
                 {"role": "user", "content": mesaj}
             ]
         }
@@ -19,7 +18,25 @@ def agent(nume, rol, mesaj):
     data = r.json()
     if "choices" in data:
         return data["choices"][0]["message"]["content"]
-    return "Eroare: " + str(data.get("error", {}).get("message", str(data)))
+    return ""
+
+def manager_ai(tema):
+    # Agent 1 - Cercetare
+    cercetare = agent(
+        "Esti un expert cercetator. Raspunde EXCLUSIV in limba romana corecta. Cerceteaza si ofera 3 idei cheie despre subiect. Fii concis.",
+        tema
+    )
+    # Agent 2 - Redactare
+    redactare = agent(
+        "Esti un redactor expert. Raspunde EXCLUSIV in limba romana corecta. Transforma aceste idei intr-un raspuns clar si coerent pentru utilizator. Fii concis.",
+        "Idei: " + cercetare + "\nSubiect: " + tema
+    )
+    # Agent Manager - Sintetizeaza
+    raspuns_final = agent(
+        "Esti un Manager AI expert. Raspunde EXCLUSIV in limba romana corecta, cu diacritice. Sintetizeaza informatia intr-un singur raspuns clar, util si prietenos pentru utilizator. Maximum 4-5 propozitii.",
+        "Informatii: " + redactare + "\nIntrebarea utilizatorului: " + tema
+    )
+    return raspuns_final
 
 HTML = """<!DOCTYPE html>
 <html>
@@ -31,15 +48,11 @@ HTML = """<!DOCTYPE html>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: Arial; background: #1a1a2e; color: white; height: 100dvh; display: flex; flex-direction: column; font-size: 16px; }
 h1 { text-align:center; padding: 12px; background: #16213e; font-size: 1.1em; border-bottom: 1px solid #333; }
-h1 span.t { color: #e94560; }
-h1 span.s { color: #f5a623; }
-h1 span.d { color: #7ed321; }
+h1 span { color: #e94560; }
 #chat { flex:1; overflow-y:auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.mesaj { padding: 10px 12px; border-radius: 16px; max-width: 92%; line-height: 1.4; font-size: 0.95em; word-break: break-word; }
+.mesaj { padding: 10px 12px; border-radius: 16px; max-width: 92%; line-height: 1.5; font-size: 0.95em; word-break: break-word; }
 .tu { background: #e94560; align-self: flex-end; border-bottom-right-radius: 4px; }
-.tania { background: #0f3460; align-self: flex-start; border-left: 3px solid #e94560; border-bottom-left-radius: 4px; }
-.sonia { background: #0f3460; align-self: flex-start; border-left: 3px solid #f5a623; border-bottom-left-radius: 4px; }
-.delia { background: #0f3460; align-self: flex-start; border-left: 3px solid #7ed321; border-bottom-left-radius: 4px; }
+.manager { background: #0f3460; align-self: flex-start; border-left: 4px solid #e94560; border-bottom-left-radius: 4px; }
 .nume { font-weight: bold; font-size: 0.75em; margin-bottom: 4px; opacity: 0.85; }
 #input-area { display: flex; padding: 10px; gap: 8px; background: #16213e; border-top: 1px solid #333; align-items: center; }
 #mesaj { flex:1; padding: 12px 15px; border-radius: 25px; border: none; background: #0f3460; color: white; font-size: 1em; outline: none; }
@@ -53,11 +66,9 @@ h1 span.d { color: #7ed321; }
 </style>
 </head>
 <body>
-<h1>🤖 <span class="t">Tania</span> · <span class="s">Sonia</span> · <span class="d">Delia</span></h1>
+<h1>🤖 <span>Manager AI</span></h1>
 <div id="chat">
-  <div class="mesaj tania"><div class="nume">🔍 Tania</div>Salut! Scrie sau vorbește o temă!</div>
-  <div class="mesaj sonia"><div class="nume">✍️ Sonia</div>Eu scriu textul frumos!</div>
-  <div class="mesaj delia"><div class="nume">🧐 Delia</div>Eu verific și îmbunătățesc!</div>
+  <div class="mesaj manager"><div class="nume">🧠 Manager AI</div>Salut! Cum te pot ajuta astazi? Scrie sau vorbeste!</div>
 </div>
 <div id="input-area">
   <input type="file" id="fisier" accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx" style="display:none" onchange="trimiseFisier()">
@@ -143,9 +154,7 @@ async function trimite() {
   if (!tema) return;
   input.value = '';
   adauga('tu', 'Tu', tema);
-  const t = adauga('tania', '🔍 Tania', '<span class="loading">cerceteaza...</span>');
-  const s = adauga('sonia', '✍️ Sonia', '<span class="loading">asteapta...</span>');
-  const d = adauga('delia', '🧐 Delia', '<span class="loading">asteapta...</span>');
+  const m = adauga('manager', '🧠 Manager AI', '<span class="loading">lucreaza...</span>');
 
   if (window.fisierSelectat) {
     const fisier = window.fisierSelectat;
@@ -160,10 +169,8 @@ async function trimite() {
         body: JSON.stringify({tema: tema, base64: base64, tip: tip})
       });
       const data = await r.json();
-      t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
-      s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
-      d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
-      vorbireText(data.delia);
+      m.innerHTML = '<div class="nume">🧠 Manager AI</div>' + data.raspuns;
+      vorbireText(data.raspuns);
     };
     reader.readAsDataURL(fisier);
     return;
@@ -175,10 +182,8 @@ async function trimite() {
     body: JSON.stringify({tema: tema})
   });
   const data = await r.json();
-  t.innerHTML = '<div class="nume">🔍 Tania</div>' + data.tania;
-  s.innerHTML = '<div class="nume">✍️ Sonia</div>' + data.sonia;
-  d.innerHTML = '<div class="nume">🧐 Delia</div>' + data.delia;
-  vorbireText(data.delia);
+  m.innerHTML = '<div class="nume">🧠 Manager AI</div>' + data.raspuns;
+  vorbireText(data.raspuns);
 }
 
 initVoice();
@@ -209,7 +214,7 @@ class Handler(BaseHTTPRequestHandler):
                     "messages": [
                         {"role": "user", "content": [
                             {"type": "image_url", "image_url": {"url": "data:" + tip + ";base64," + base64_img}},
-                            {"type": "text", "text": "Esti un asistent AI. " + tema + ". Raspunde exclusiv in limba romana corecta gramatical."}
+                            {"type": "text", "text": "Esti Manager AI. " + tema + ". Raspunde exclusiv in limba romana corecta, concis si clar."}
                         ]}
                     ]
                 }
@@ -218,39 +223,20 @@ class Handler(BaseHTTPRequestHandler):
             if "choices" in result:
                 raspuns = result["choices"][0]["message"]["content"]
             else:
-                raspuns = "Eroare: " + str(result)
-            tania = raspuns
-            sonia = agent("Sonia", "Scrii frumos despre", raspuns)
-            delia = agent("Delia", "Dai feedback pentru", sonia)
+                raspuns = "Eroare la procesarea imaginii."
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
-            return
-
-        if self.path == '/upload':
-            content_length = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_length)
-            filename = self.headers.get('X-Filename', 'fisier')
-            continut = "Fisierul se numeste: " + filename + ". Analizeaza si descrie ce ar putea contine."
-            tania = agent("Tania", "Analizezi fisiere si descrii continutul", continut)
-            sonia = agent("Sonia", "Scrii despre", tania)
-            delia = agent("Delia", "Dai feedback pentru", sonia)
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
+            self.wfile.write(json.dumps({"raspuns": raspuns}).encode())
             return
 
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         tema = data['tema']
-        tania = agent("Tania", "Cercetezi subiecte si dai 3 idei principale", tema)
-        sonia = agent("Sonia", "Scrii texte frumoase bazate pe: " + tania, tema)
-        delia = agent("Delia", "Dai feedback constructiv pentru: " + sonia, tema)
+        raspuns = manager_ai(tema)
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(json.dumps({"tania": tania, "sonia": sonia, "delia": delia}).encode())
+        self.wfile.write(json.dumps({"raspuns": raspuns}).encode())
 
 print("Aplicatia porneste...")
 print("Deschide in browser: http://localhost:8080")
