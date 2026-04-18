@@ -18,16 +18,13 @@ REPLICATE_KEY = os.environ.get("REPLICATE_API_TOKEN", "").strip()
 print(f"=== DIAGNOSTIC ===")
 print(f"OPENROUTER_KEY setat: {bool(KEY)}")
 print(f"REPLICATE_API_TOKEN setat: {bool(REPLICATE_KEY)}")
-if KEY:
-    print(f"KEY primi 20 caractere: {KEY[:20]}...")
-else:
-    print("KEY: N/A")
+print(f"KEY primii 20 caractere: {KEY[:20] if KEY else 'N/A'}...")
 print(f"=================")
 
 if not KEY:
-    print("⚠️ ATENȚIE: OPENROUTER_KEY nu este setată! Chatul nu va funcționa.")
+    print("⚠️ ATENȚIE: OPENROUTER_KEY nu este setată! Chat-ul nu va funcționa.")
 
-# Încearcă să importe replicate
+# Încearcă să importe replicate, dar nu crapă dacă lipsește
 try:
     import replicate
     REPLICATE_AVAILABLE = bool(REPLICATE_KEY)
@@ -35,7 +32,7 @@ try:
 except ImportError:
     replicate = None
     REPLICATE_AVAILABLE = False
-    print(f"⚠️ Replicate nu este instalat")
+    print(f"⚠️ Replicate nu este instalat. Generarea imagini va fi dezactivată.")
 
 AGENTI = {
     "voluntari": {
@@ -691,8 +688,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": str(e)}).encode())
             return
 
-if __name__ == "_main_":
-    port = int(os.environ.get("PORT", 8080))
-    print(f"🚀 Aplicatia porneste pe Render...")
-    print(f"🌐 Serverul rulează pe portul {port}")
-    HTTPServer(('0.0.0.0', port), Handler).serve_forever()
+print("🚀 Aplicatia porneste pe Render...")
+print("🌐 Serverul rulează pe portul 8080")
+HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
