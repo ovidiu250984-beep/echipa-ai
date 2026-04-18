@@ -691,6 +691,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": str(e)}).encode())
             return
 
-print("🚀 Aplicatia porneste pe Render...")
-print("🌐 Serverul rulează pe portul 8080")
-HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+if _name_ == "_main_":
+    port = int(os.environ.get("PORT", 8080))
+    print(f"🚀 Aplicatia porneste pe Render...")
+    print(f"🌐 Serverul rulează pe portul {port}")
+    HTTPServer(('0.0.0.0', port), Handler).serve_forever()
