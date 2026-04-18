@@ -1,7 +1,6 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json, requests, os
 from datetime import datetime
-import replicate
 import base64
 from io import BytesIO
 from docx import Document
@@ -10,8 +9,30 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import tempfile
+import traceback
 
+# Verifică variabilele de mediu
 KEY = os.environ.get("OPENROUTER_KEY", "").strip()
+REPLICATE_KEY = os.environ.get("REPLICATE_API_TOKEN", "").strip()
+
+print(f"=== DIAGNOSTIC ===")
+print(f"OPENROUTER_KEY setat: {bool(KEY)}")
+print(f"REPLICATE_API_TOKEN setat: {bool(REPLICATE_KEY)}")
+print(f"KEY primii 20 caractere: {KEY[:20] if KEY else 'N/A'}...")
+print(f"=================")
+
+if not KEY:
+    print("⚠️ ATENȚIE: OPENROUTER_KEY nu este setată! Chat-ul nu va funcționa.")
+
+# Încearcă să importe replicate, dar nu crapă dacă lipsește
+try:
+    import replicate
+    REPLICATE_AVAILABLE = bool(REPLICATE_KEY)
+    print(f"✅ Replicate importat cu succes")
+except ImportError:
+    replicate = None
+    REPLICATE_AVAILABLE = False
+    print(f"⚠️ Replicate nu este instalat. Generarea imagini va fi dezactivată.")
 
 AGENTI = {
     "voluntari": {
@@ -54,7 +75,8 @@ AGENTI = {
 
 INSTRUCTIUNI_ROMANA = "Raspunde EXCLUSIV in limba romana corecta, cu diacritice. Fii concis, clar si prietenos. Maximum 5 propozitii."
 
-FISIER_ISTORIC = "istoric.json"
+# Pentru Render, folosim un fișier temporar pentru istoric
+FISIER_ISTORIC = "/tmp/istoric.json"
 
 conversatie = []
 
@@ -75,8 +97,8 @@ def salveaza_istoric(intrebare, raspuns, agent_nume):
             istoric = istoric[-100:]
         with open(FISIER_ISTORIC, "w", encoding="utf-8") as f:
             json.dump(istoric, f, ensure_ascii=False, indent=2)
-    except:
-        pass
+    except Exception as e:
+        print(f"Eroare salvare istoric: {e}")
 
 def citeste_istoric():
     try:
@@ -88,17 +110,17 @@ def citeste_istoric():
     return []
 
 def asigura_romana(text):
-    """Verifică și corectează limba răspunsului"""
     if not text:
         return text
-    # Verifică dacă textul are diacritice sau cuvinte românești
     romana_ok = any(c in text.lower() for c in ["ă", "â", "î", "ș", "ț", "și", "să", "pentru", "care", "dar"])
     if not romana_ok and len(text) > 15:
         return "⚠️ Răspunsul a fost generat tehnic. Te rog să reformulezi întrebarea pentru limba română."
     return text
 
 def apeleaza_agent(rol_agent, mesaj, cu_istoric=False):
-    # Construiește instrucțiuni clare pentru limba română
+    if not KEY:
+        return "Eroare: Cheia OPENROUTER_KEY nu este configurată. Adaug-o în Environment Variables pe Render."
+    
     instructiuni = f"""{rol_agent}
 
 REGULI OBLIGATORII:
@@ -114,21 +136,27 @@ REGULI OBLIGATORII:
             mesaje.append(m)
     mesaje.append({"role": "user", "content": mesaj})
     
-    # Folosește un model care știm că răspunde bine în română
-    r = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-        json={
-            "model": "google/gemini-2.0-flash-exp:free",
-            "messages": mesaje,
-            "temperature": 0.5
-        }
-    )
-    data = r.json()
-    if "choices" in data:
-        raspuns = data["choices"][0]["message"]["content"]
-        return asigura_romana(raspuns)
-    return "Eroare: nu am putut genera un răspuns."
+    try:
+        r = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
+            json={
+                "model": "google/gemini-2.0-flash-exp:free",
+                "messages": mesaje,
+                "temperature": 0.5
+            },
+            timeout=30
+        )
+        data = r.json()
+        if "choices" in data:
+            raspuns = data["choices"][0]["message"]["content"]
+            return asigura_romana(raspuns)
+        else:
+            print(f"Eroare API: {data}")
+            return f"Eroare API: {data.get('error', {}).get('message', 'Eroare necunoscută')}"
+    except Exception as e:
+        print(f"Eroare request: {e}")
+        return f"Eroare de conexiune: {str(e)}"
 
 def manager_ai(tema):
     global conversatie
@@ -159,16 +187,10 @@ def manager_ai(tema):
     salveaza_istoric(tema, raspuns_final, agent_info["nume"])
     return raspuns_final, agent_info["nume"]
 
-# ========== NOI FUNCȚII PENTRU GENERARE IMAGINI ȘI DOCUMENTE ==========
-
 def genereaza_imagine(prompt):
-    """Generează o imagine folosind Replicate"""
+    if not REPLICATE_AVAILABLE or not REPLICATE_KEY:
+        return None, "Generarea de imagini necesită token Replicate. Adaugă REPLICATE_API_TOKEN în variabilele de mediu."
     try:
-        replicate_api = os.environ.get("REPLICATE_API_TOKEN", "")
-        if not replicate_api:
-            return None, "Token Replicate lipsă. Adaugă REPLICATE_API_TOKEN în variabilele de mediu."
-        
-        # Folosește modelul Flux pentru imagini de calitate
         output = replicate.run(
             "black-forest-labs/flux-schnell",
             input={
@@ -185,50 +207,33 @@ def genereaza_imagine(prompt):
         return None, f"Eroare generare: {str(e)}"
 
 def creeaza_document_word(continut, nume_fisier="document_generat.docx"):
-    """Creează un document Word cu conținutul generat"""
     try:
         doc = Document()
         doc.add_heading('Document Generat de Manager AI', 0)
-        
-        # Adaugă data
         doc.add_paragraph(f"Generat la: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
         doc.add_paragraph()
-        
-        # Adaugă conținutul
         paragrafe = continut.split('\n')
         for p in paragrafe:
             if p.strip():
                 doc.add_paragraph(p.strip())
-        
-        # Salvează temporar
         temp_path = os.path.join(tempfile.gettempdir(), nume_fisier)
         doc.save(temp_path)
-        
-        # Citește fișierul pentru a fi trimis
         with open(temp_path, 'rb') as f:
             file_data = base64.b64encode(f.read()).decode('utf-8')
-        
         os.remove(temp_path)
         return file_data, f"{nume_fisier}"
     except Exception as e:
         return None, f"Eroare creare Word: {str(e)}"
 
 def creeaza_pdf(continut, nume_fisier="document_generat.pdf"):
-    """Creează un document PDF cu conținutul generat"""
     try:
         temp_path = os.path.join(tempfile.gettempdir(), nume_fisier)
         c = canvas.Canvas(temp_path, pagesize=A4)
         width, height = A4
-        
-        # Titlu
         c.setFont("Helvetica-Bold", 16)
         c.drawString(50, height - 50, "Document Generat de Manager AI")
-        
-        # Data
         c.setFont("Helvetica", 10)
         c.drawString(50, height - 70, f"Generat la: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
-        
-        # Conținut
         c.setFont("Helvetica", 11)
         y = height - 100
         linii = continut.split('\n')
@@ -240,21 +245,15 @@ def creeaza_pdf(continut, nume_fisier="document_generat.pdf"):
             if line.strip():
                 c.drawString(50, y, line.strip()[:90])
             y -= 20
-        
         c.save()
-        
-        # Citește fișierul
         with open(temp_path, 'rb') as f:
             file_data = base64.b64encode(f.read()).decode('utf-8')
-        
         os.remove(temp_path)
         return file_data, f"{nume_fisier}"
     except Exception as e:
         return None, f"Eroare creare PDF: {str(e)}"
 
 def genereaza_document_dupa_tema(tema, tip_document="word"):
-    """Generează un document pe baza temei cerute"""
-    # Mai întâi, managerul alege agentul potrivit
     lista_agenti = ", ".join(AGENTI.keys())
     decizie = apeleaza_agent(
         "Esti Manager AI. Raspunzi DOAR cu cheia agentului potrivit pentru a scrie un document. Agenti: " + lista_agenti,
@@ -268,10 +267,7 @@ def genereaza_document_dupa_tema(tema, tip_document="word"):
             break
     if not agent_valid:
         agent_valid = "documente"
-    
     agent_info = AGENTI[agent_valid]
-    
-    # Generează conținutul documentului
     instructiuni_document = f"""{agent_info['rol']}
 
 IMPORTANT: Generează un document complet, structurat, cu titlu, capitole și paragrafe. 
@@ -282,7 +278,6 @@ Scrie conținutul detaliat, de minimum 10-15 propoziții."""
     
     continut = apeleaza_agent(instructiuni_document, tema, cu_istoric=False)
     
-    # Creează documentul în formatul cerut
     if tip_document == "pdf":
         file_data, nume = creeaza_pdf(continut, f"document_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
     else:
@@ -290,8 +285,7 @@ Scrie conținutul detaliat, de minimum 10-15 propoziții."""
     
     return file_data, nume, continut
 
-# ========== HTML CU INTERFAȚA COMPLETĂ ==========
-
+# HTML (la fel ca înainte, nu modific)
 HTML = """<!DOCTYPE html>
 <html>
 <head>
@@ -494,14 +488,22 @@ async function trimite() {
     return;
   }
 
-  const r = await fetch('/chat', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({tema: tema})
-  });
-  const data = await r.json();
-  m.innerHTML = '<div class="nume">🧠 Manager AI</div><span class="agent-tag">' + data.agent + '</span><br>' + data.raspuns;
-  vorbireText(data.raspuns);
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tema: tema})
+    });
+    const data = await r.json();
+    if (data.error) {
+      m.innerHTML = '<div class="nume">🧠 Manager AI</div><span class="agent-tag">⚠️ Eroare</span><br>' + data.error;
+    } else {
+      m.innerHTML = '<div class="nume">🧠 Manager AI</div><span class="agent-tag">' + data.agent + '</span><br>' + data.raspuns;
+      vorbireText(data.raspuns);
+    }
+  } catch(e) {
+    m.innerHTML = '<div class="nume">🧠 Manager AI</div><span class="agent-tag">⚠️ Eroare</span><br>Eroare de conexiune: ' + e.message;
+  }
 }
 
 async function genereazaImagine() {
@@ -583,80 +585,109 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(HTML.encode())
 
     def do_POST(self):
+        print(f"📨 POST request la {self.path}")
+        
         if self.path == '/chat-imagine':
-            data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-            tema = data['tema']
-            base64_img = data['base64']
-            tip = data['tip']
-            r = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-                json={
-                    "model": "google/gemini-2.0-flash-exp:free",
-                    "messages": [
-                        {"role": "user", "content": [
-                            {"type": "image_url", "image_url": {"url": "data:" + tip + ";base64," + base64_img}},
-                            {"type": "text", "text": "Esti Manager AI. " + tema + ". Raspunde DOAR in limba romana cu diacritice."}
-                        ]}
-                    ]
-                }
-            )
-            result = r.json()
-            if "choices" in result:
-                raspuns = result["choices"][0]["message"]["content"]
-                raspuns = asigura_romana(raspuns)
-            else:
-                raspuns = "Eroare la procesarea imaginii. Te rog să încerci din nou."
-            salveaza_istoric(tema, raspuns, "Agent Vizual")
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({"raspuns": raspuns, "agent": "Agent Vizual"}, ensure_ascii=False).encode())
+            try:
+                data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                tema = data['tema']
+                base64_img = data['base64']
+                tip = data['tip']
+                r = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
+                    json={
+                        "model": "google/gemini-2.0-flash-exp:free",
+                        "messages": [
+                            {"role": "user", "content": [
+                                {"type": "image_url", "image_url": {"url": "data:" + tip + ";base64," + base64_img}},
+                                {"type": "text", "text": "Esti Manager AI. " + tema + ". Raspunde DOAR in limba romana cu diacritice."}
+                            ]}
+                        ]
+                    },
+                    timeout=30
+                )
+                result = r.json()
+                if "choices" in result:
+                    raspuns = result["choices"][0]["message"]["content"]
+                    raspuns = asigura_romana(raspuns)
+                else:
+                    raspuns = "Eroare la procesarea imaginii. Te rog să încerci din nou."
+                salveaza_istoric(tema, raspuns, "Agent Vizual")
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"raspuns": raspuns, "agent": "Agent Vizual"}, ensure_ascii=False).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
             return
 
         if self.path == '/genereaza-imagine':
-            data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-            prompt = data.get('prompt', '')
-            url, eroare = genereaza_imagine(prompt)
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            if url:
-                self.wfile.write(json.dumps({"url": url, "success": True}).encode())
-            else:
-                self.wfile.write(json.dumps({"error": eroare, "success": False}).encode())
+            try:
+                data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                prompt = data.get('prompt', '')
+                url, eroare = genereaza_imagine(prompt)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                if url:
+                    self.wfile.write(json.dumps({"url": url, "success": True}).encode())
+                else:
+                    self.wfile.write(json.dumps({"error": eroare, "success": False}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e), "success": False}).encode())
             return
 
         if self.path == '/genereaza-document':
-            data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-            tema = data.get('tema', '')
-            tip = data.get('tip', 'word')
-            file_data, nume_fisier, continut = genereaza_document_dupa_tema(tema, tip)
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            if file_data:
-                self.wfile.write(json.dumps({
-                    "success": True, 
-                    "file_data": file_data, 
-                    "filename": nume_fisier,
-                    "continut": continut
-                }).encode())
-            else:
-                self.wfile.write(json.dumps({"success": False, "error": nume_fisier}).encode())
+            try:
+                data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                tema = data.get('tema', '')
+                tip = data.get('tip', 'word')
+                file_data, nume_fisier, continut = genereaza_document_dupa_tema(tema, tip)
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                if file_data:
+                    self.wfile.write(json.dumps({
+                        "success": True, 
+                        "file_data": file_data, 
+                        "filename": nume_fisier,
+                        "continut": continut
+                    }).encode())
+                else:
+                    self.wfile.write(json.dumps({"success": False, "error": nume_fisier}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode())
             return
 
         # Endpoint-ul principal pentru chat
-        data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        tema = data['tema']
-        raspuns, agent_nume = manager_ai(tema)
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({"raspuns": raspuns, "agent": agent_nume}, ensure_ascii=False).encode())
+        if self.path == '/chat':
+            try:
+                data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                tema = data['tema']
+                print(f"📝 Procesez: {tema}")
+                raspuns, agent_nume = manager_ai(tema)
+                print(f"✅ Răspuns generat de {agent_nume}")
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"raspuns": raspuns, "agent": agent_nume}, ensure_ascii=False).encode())
+            except Exception as e:
+                print(f"❌ Eroare: {e}")
+                traceback.print_exc()
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+            return
 
-print("Aplicatia porneste...")
-print("Deschide in browser: http://localhost:8080")
-print("🎨 Pentru generare imagini, adauga variabila REPLICATE_API_TOKEN")
-print("📝 Pentru documente Word/PDF, asigura-te ca ai instalat python-docx si reportlab")
-HTTPServer(('', 8080), Handler).serve_forever()
+print("🚀 Aplicatia porneste pe Render...")
+print("🌐 Serverul rulează pe portul 8080")
+HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
