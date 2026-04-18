@@ -6,54 +6,65 @@ KEY = os.environ.get("OPENROUTER_KEY", "").strip()
 AGENTI = {
     "voluntari": {
         "nume": "Agent Voluntari & Outreach",
-        "rol": "Ești expert în recrutare voluntari, comunicare cu comunitatea și coordonare echipe pentru ONG-uri caritabile. Ajuți cu: recrutare voluntari, mesaje comunitate, coordonare echipe, motivare voluntari."
+        "rol": "Esti expert in recrutare voluntari, comunicare cu comunitatea si coordonare echipe pentru ONG-uri caritabile. Ajuti cu: recrutare voluntari, mesaje comunitate, coordonare echipe, motivare voluntari."
     },
     "fundraising": {
         "nume": "Agent Fundraising",
-        "rol": "Ești expert în strângere de fonduri pentru ONG-uri. Ajuți cu: strategii fundraising, propuneri de sponsorizare, campanii donații, cereri de finanțare, relații cu donatori."
+        "rol": "Esti expert in strangere de fonduri pentru ONG-uri. Ajuti cu: strategii fundraising, propuneri de sponsorizare, campanii donatii, cereri de finantare, relatii cu donatori."
     },
     "social_media": {
         "nume": "Agent Content & Social Media",
-        "rol": "Ești expert în comunicare digitală pentru ONG-uri. Ajuți cu: postări Facebook și Instagram, comunicate de presă, newsletter, campanii online, storytelling caritabil."
+        "rol": "Esti expert in comunicare digitala pentru ONG-uri. Ajuti cu: postari Facebook si Instagram, comunicate de presa, newsletter, campanii online, storytelling caritabil."
     },
     "parteneriate": {
         "nume": "Agent Parteneriate",
-        "rol": "Ești expert în parteneriate pentru ONG-uri. Ajuți cu: colaborări DGASPC, parteneriate cu primării, relații cu firme sponsor, colaborări cu alte ONG-uri, protocoale de colaborare."
+        "rol": "Esti expert in parteneriate pentru ONG-uri. Ajuti cu: colaborari DGASPC, parteneriate cu primarii, relatii cu firme sponsor, colaborari cu alte ONG-uri, protocoale de colaborare."
     },
     "proiecte": {
         "nume": "Agent Project & Event Manager",
-        "rol": "Ești expert în managementul proiectelor și evenimentelor caritabile. Ajuți cu: planificare evenimente, liste de sarcini, termene limită, coordonare proiecte, organizare activități."
+        "rol": "Esti expert in managementul proiectelor si evenimentelor caritabile. Ajuti cu: planificare evenimente, liste de sarcini, termene limita, coordonare proiecte, organizare activitati."
     },
     "documente": {
         "nume": "Agent Rapoarte & Documente",
-        "rol": "Ești expert în documentație pentru ONG-uri. Ajuți cu: rapoarte pentru finanțatori, documente ANAF, procese verbale, minute ședințe, rapoarte de activitate, cereri și adrese oficiale."
+        "rol": "Esti expert in documentatie pentru ONG-uri. Ajuti cu: rapoarte pentru finantatori, documente ANAF, procese verbale, minute sedinte, rapoarte de activitate, cereri si adrese oficiale."
     },
     "legal": {
         "nume": "Agent Legal & Conformitate",
-        "rol": "Ești expert în legislația ONG-urilor din România. Ajuți cu: legislație ONG, contracte voluntari, conformitate GDPR, regulamente interne, obligații legale, statut asociație."
+        "rol": "Esti expert in legislatia ONG-urilor din Romania. Ajuti cu: legislatie ONG, contracte voluntari, conformitate GDPR, regulamente interne, obligatii legale, statut asociatie."
     },
     "monitorizare": {
         "nume": "Agent Monitorizare & Impact",
-        "rol": "Ești expert în măsurarea impactului social. Ajuți cu: statistici activități, rapoarte de impact, indicatori de performanță, evaluare progres, rapoarte pentru sponsori."
+        "rol": "Esti expert in masurarea impactului social. Ajuti cu: statistici activitati, rapoarte de impact, indicatori de performanta, evaluare progres, rapoarte pentru sponsori."
     },
     "comunicare": {
         "nume": "Agent Comunicare & PR",
-        "rol": "Ești expert în relații publice pentru ONG-uri. Ajuți cu: comunicate presă, relații cu media, scrisori oficiale, discursuri, prezentări publice, imagine organizație."
+        "rol": "Esti expert in relatii publice pentru ONG-uri. Ajuti cu: comunicate presa, relatii cu media, scrisori oficiale, discursuri, prezentari publice, imagine organizatie."
     }
 }
 
-INSTRUCTIUNI_ROMANA = "Raspunde EXCLUSIV in limba romana corecta, cu diacritice (ă, â, î, ș, ț). Fii concis, clar si prietenos. Maximum 5 propozitii."
+INSTRUCTIUNI_ROMANA = "Raspunde EXCLUSIV in limba romana corecta, cu diacritice (a cu caciula, a cu capita, i cu capita, s cu virgula, t cu virgula). Fii concis, clar si prietenos. Maximum 5 propozitii."
 
-def apeleaza_agent(rol_agent, mesaj):
+# Memorie globala - pastreaza istoricul conversatiei
+conversatie = []
+
+def apeleaza_agent(rol_agent, mesaj, cu_istoric=False):
+    mesaje = [{"role": "system", "content": rol_agent + " " + INSTRUCTIUNI_ROMANA}]
+    
+    # Adauga istoricul daca e necesar
+    if cu_istoric and len(conversatie) > 0:
+        # Adauga ultimele 6 mesaje din istoric pentru context
+        istoric_recent = conversatie[-6:]
+        for m in istoric_recent:
+            mesaje.append(m)
+    
+    mesaje.append({"role": "user", "content": mesaj})
+    
     r = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
         json={
             "model": "openrouter/free",
-            "messages": [
-                {"role": "system", "content": rol_agent + " " + INSTRUCTIUNI_ROMANA},
-                {"role": "user", "content": mesaj}
-            ]
+            "messages": mesaje
         }
     )
     data = r.json()
@@ -62,6 +73,11 @@ def apeleaza_agent(rol_agent, mesaj):
     return ""
 
 def manager_ai(tema):
+    global conversatie
+    
+    # Adauga mesajul utilizatorului in istoric
+    conversatie.append({"role": "user", "content": tema})
+    
     # Pasul 1: Manager decide care agent e potrivit
     lista_agenti = ", ".join(AGENTI.keys())
     decizie = apeleaza_agent(
@@ -79,23 +95,31 @@ def manager_ai(tema):
             agent_valid = cheie
             break
     
-    # Daca nu a gasit un agent valid, foloseste primul potrivit
     if not agent_valid:
         agent_valid = "voluntari"
     
     agent_info = AGENTI[agent_valid]
     
-    # Pasul 2: Agentul specializat proceseaza cererea
+    # Pasul 2: Agentul specializat proceseaza cererea cu istoric
     raspuns_agent = apeleaza_agent(
         agent_info["rol"],
-        tema
+        tema,
+        cu_istoric=True
     )
     
     # Pasul 3: Manager sintetizeaza raspunsul final
     raspuns_final = apeleaza_agent(
         "Esti Manager AI pentru o asociatie caritabila. Primesti raspunsul unui agent specializat si il prezinti utilizatorului intr-un mod clar, profesional si prietenos. Mentionezi pe scurt de la ce expert vine informatia. " + INSTRUCTIUNI_ROMANA,
-        "Agentul " + agent_info["nume"] + " a raspuns: " + raspuns_agent + "\nCererea initiala: " + tema
+        "Agentul " + agent_info["nume"] + " a raspuns: " + raspuns_agent + "\nCererea initiala: " + tema,
+        cu_istoric=True
     )
+    
+    # Adauga raspunsul in istoric
+    conversatie.append({"role": "assistant", "content": raspuns_final})
+    
+    # Pastreaza doar ultimele 20 mesaje pentru a nu depasi limita
+    if len(conversatie) > 20:
+        conversatie = conversatie[-20:]
     
     return raspuns_final, agent_info["nume"]
 
@@ -124,6 +148,7 @@ h1 small { display:block; font-size:0.7em; color:#aaa; margin-top:2px; }
 #microfon { padding: 12px; border-radius: 50%; border: none; background: #0f3460; color: white; cursor: pointer; font-size: 1.2em; width: 48px; height: 48px; }
 #microfon.activ { background: #e94560; animation: pulse 1s infinite; }
 #atasare { padding: 12px; border-radius: 50%; border: none; background: #0f3460; color: white; cursor: pointer; font-size: 1.2em; width: 48px; height: 48px; }
+#reset { padding: 8px 12px; border-radius: 20px; border: none; background: #333; color: #aaa; cursor: pointer; font-size: 0.8em; margin: 5px auto; display: block; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .loading { opacity: 0.6; font-style: italic; }
 </style>
@@ -133,9 +158,10 @@ h1 small { display:block; font-size:0.7em; color:#aaa; margin-top:2px; }
 <div id="chat">
   <div class="mesaj manager">
     <div class="nume">🧠 Manager AI</div>
-    Salut! Sunt Manager-ul tau AI pentru asociatia caritabila. Am 9 agenti specializati gata sa te ajute cu: voluntari, fundraising, social media, parteneriate, proiecte, documente, legal, monitorizare si comunicare PR. Cum te pot ajuta astazi?
+    Salut! Sunt Manager-ul tau AI pentru asociatia caritabila. Am 9 agenti specializati si imi amintesc tot ce discutam! Cum te pot ajuta astazi?
   </div>
 </div>
+<button id="reset" onclick="resetConversatie()">🔄 Conversatie noua</button>
 <div id="input-area">
   <input type="file" id="fisier" accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx" style="display:none" onchange="trimiseFisier()">
   <button id="atasare" onclick="document.getElementById('fisier').click()">📎</button>
@@ -146,6 +172,11 @@ h1 small { display:block; font-size:0.7em; color:#aaa; margin-top:2px; }
 <script>
 let recunoastere = null;
 let vorbeste = false;
+
+async function resetConversatie() {
+  await fetch('/reset', {method: 'POST'});
+  document.getElementById('chat').innerHTML = '<div class="mesaj manager"><div class="nume">🧠 Manager AI</div>Conversatie noua pornita! Cum te pot ajuta?</div>';
+}
 
 async function trimiseFisier() {
   const fisier = document.getElementById('fisier').files[0];
@@ -267,6 +298,15 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(HTML.encode())
 
     def do_POST(self):
+        if self.path == '/reset':
+            global conversatie
+            conversatie = []
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode())
+            return
+
         if self.path == '/chat-imagine':
             data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             tema = data['tema']
