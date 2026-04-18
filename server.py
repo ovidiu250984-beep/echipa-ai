@@ -691,7 +691,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": str(e)}).encode())
             return
 
-if _name_ == "_main_":
+if __name__ == "_main_":
     port = int(os.environ.get("PORT", 8080))
     print(f"🚀 Aplicatia porneste pe Render...")
     print(f"🌐 Serverul rulează pe portul {port}")
