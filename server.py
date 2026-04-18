@@ -43,7 +43,7 @@ AGENTI = {
     }
 }
 
-INSTRUCTIUNI_ROMANA = "Raspunde EXCLUSIV in limba romana corecta, cu diacritice. Fii concis, clar si prietenos. Maximum 5 propozitii."
+INSTRUCTIUNI_ROMANA = "Raspunde EXCLUSIV in limba romana corecta, cu diacritice (ă, â, î, ș, ț). Fii concis, clar si prietenos. Maximum 5 propozitii."
 
 FISIER_ISTORIC = "istoric.json"
 
