@@ -1,6 +1,15 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json, requests, os
 from datetime import datetime
+import replicate
+import base64
+from io import BytesIO
+from docx import Document
+from docx.shared import Inches
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+import tempfile
 
 KEY = os.environ.get("OPENROUTER_KEY", "").strip()
 
@@ -43,7 +52,7 @@ AGENTI = {
     }
 }
 
-INSTRUCTIUNI_ROMANA = "Raspunde EXCLUSIV in limba romana corecta, cu diacritice (ă, â, î, ș, ț). Fii concis, clar si prietenos. Maximum 5 propozitii."
+INSTRUCTIUNI_ROMANA = "Raspunde EXCLUSIV in limba romana corecta, cu diacritice. Fii concis, clar si prietenos. Maximum 5 propozitii."
 
 FISIER_ISTORIC = "istoric.json"
 
@@ -78,21 +87,48 @@ def citeste_istoric():
         pass
     return []
 
+def asigura_romana(text):
+    """Verifică și corectează limba răspunsului"""
+    if not text:
+        return text
+    # Verifică dacă textul are diacritice sau cuvinte românești
+    romana_ok = any(c in text.lower() for c in ["ă", "â", "î", "ș", "ț", "și", "să", "pentru", "care", "dar"])
+    if not romana_ok and len(text) > 15:
+        return "⚠️ Răspunsul a fost generat tehnic. Te rog să reformulezi întrebarea pentru limba română."
+    return text
+
 def apeleaza_agent(rol_agent, mesaj, cu_istoric=False):
-    mesaje = [{"role": "system", "content": rol_agent + " " + INSTRUCTIUNI_ROMANA}]
+    # Construiește instrucțiuni clare pentru limba română
+    instructiuni = f"""{rol_agent}
+
+REGULI OBLIGATORII:
+1. Răspunde EXCLUSIV în limba română.
+2. Folosește diacritice corecte (ă, â, î, ș, ț).
+3. Fii concis, maximum 4-5 propoziții.
+4. Nu folosi alte limbi decât româna."""
+    
+    mesaje = [{"role": "system", "content": instructiuni}]
+    
     if cu_istoric and len(conversatie) > 0:
         for m in conversatie[-6:]:
             mesaje.append(m)
     mesaje.append({"role": "user", "content": mesaj})
+    
+    # Folosește un model care știm că răspunde bine în română
     r = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
-        json={"model": "openrouter/free", "messages": mesaje}
+        json={
+            "model": "google/gemini-2.0-flash-exp:free",
+            "messages": mesaje,
+            "temperature": 0.5
+        }
     )
     data = r.json()
     if "choices" in data:
-        return data["choices"][0]["message"]["content"]
-    return ""
+        raspuns = data["choices"][0]["message"]["content"]
+        return asigura_romana(raspuns)
+    return "Eroare: nu am putut genera un răspuns."
 
 def manager_ai(tema):
     global conversatie
@@ -123,6 +159,139 @@ def manager_ai(tema):
     salveaza_istoric(tema, raspuns_final, agent_info["nume"])
     return raspuns_final, agent_info["nume"]
 
+# ========== NOI FUNCȚII PENTRU GENERARE IMAGINI ȘI DOCUMENTE ==========
+
+def genereaza_imagine(prompt):
+    """Generează o imagine folosind Replicate"""
+    try:
+        replicate_api = os.environ.get("REPLICATE_API_TOKEN", "")
+        if not replicate_api:
+            return None, "Token Replicate lipsă. Adaugă REPLICATE_API_TOKEN în variabilele de mediu."
+        
+        # Folosește modelul Flux pentru imagini de calitate
+        output = replicate.run(
+            "black-forest-labs/flux-schnell",
+            input={
+                "prompt": f"{prompt}, in Romanian style, high quality",
+                "num_outputs": 1,
+                "width": 768,
+                "height": 768
+            }
+        )
+        if output and len(output) > 0:
+            return output[0], None
+        return None, "Nu am putut genera imaginea"
+    except Exception as e:
+        return None, f"Eroare generare: {str(e)}"
+
+def creeaza_document_word(continut, nume_fisier="document_generat.docx"):
+    """Creează un document Word cu conținutul generat"""
+    try:
+        doc = Document()
+        doc.add_heading('Document Generat de Manager AI', 0)
+        
+        # Adaugă data
+        doc.add_paragraph(f"Generat la: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        doc.add_paragraph()
+        
+        # Adaugă conținutul
+        paragrafe = continut.split('\n')
+        for p in paragrafe:
+            if p.strip():
+                doc.add_paragraph(p.strip())
+        
+        # Salvează temporar
+        temp_path = os.path.join(tempfile.gettempdir(), nume_fisier)
+        doc.save(temp_path)
+        
+        # Citește fișierul pentru a fi trimis
+        with open(temp_path, 'rb') as f:
+            file_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        os.remove(temp_path)
+        return file_data, f"{nume_fisier}"
+    except Exception as e:
+        return None, f"Eroare creare Word: {str(e)}"
+
+def creeaza_pdf(continut, nume_fisier="document_generat.pdf"):
+    """Creează un document PDF cu conținutul generat"""
+    try:
+        temp_path = os.path.join(tempfile.gettempdir(), nume_fisier)
+        c = canvas.Canvas(temp_path, pagesize=A4)
+        width, height = A4
+        
+        # Titlu
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, height - 50, "Document Generat de Manager AI")
+        
+        # Data
+        c.setFont("Helvetica", 10)
+        c.drawString(50, height - 70, f"Generat la: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        
+        # Conținut
+        c.setFont("Helvetica", 11)
+        y = height - 100
+        linii = continut.split('\n')
+        for line in linii:
+            if y < 50:
+                c.showPage()
+                y = height - 50
+                c.setFont("Helvetica", 11)
+            if line.strip():
+                c.drawString(50, y, line.strip()[:90])
+            y -= 20
+        
+        c.save()
+        
+        # Citește fișierul
+        with open(temp_path, 'rb') as f:
+            file_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        os.remove(temp_path)
+        return file_data, f"{nume_fisier}"
+    except Exception as e:
+        return None, f"Eroare creare PDF: {str(e)}"
+
+def genereaza_document_dupa_tema(tema, tip_document="word"):
+    """Generează un document pe baza temei cerute"""
+    # Mai întâi, managerul alege agentul potrivit
+    lista_agenti = ", ".join(AGENTI.keys())
+    decizie = apeleaza_agent(
+        "Esti Manager AI. Raspunzi DOAR cu cheia agentului potrivit pentru a scrie un document. Agenti: " + lista_agenti,
+        "Genereaza un document despre: " + tema
+    )
+    agent_ales = decizie.strip().lower().replace(" ", "_")
+    agent_valid = None
+    for cheie in AGENTI.keys():
+        if cheie in agent_ales:
+            agent_valid = cheie
+            break
+    if not agent_valid:
+        agent_valid = "documente"
+    
+    agent_info = AGENTI[agent_valid]
+    
+    # Generează conținutul documentului
+    instructiuni_document = f"""{agent_info['rol']}
+
+IMPORTANT: Generează un document complet, structurat, cu titlu, capitole și paragrafe. 
+Documentul trebuie să fie profesional și util pentru o organizație non-profit.
+Tema: {tema}
+
+Scrie conținutul detaliat, de minimum 10-15 propoziții."""
+    
+    continut = apeleaza_agent(instructiuni_document, tema, cu_istoric=False)
+    
+    # Creează documentul în formatul cerut
+    if tip_document == "pdf":
+        file_data, nume = creeaza_pdf(continut, f"document_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+    else:
+        file_data, nume = creeaza_document_word(continut, f"document_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx")
+    
+    return file_data, nume, continut
+
+# ========== HTML CU INTERFAȚA COMPLETĂ ==========
+
 HTML = """<!DOCTYPE html>
 <html>
 <head>
@@ -150,16 +319,23 @@ h1 small { display:block; font-size:0.7em; color:#aaa; margin-top:2px; }
 .istoric-intrebare { font-size: 0.85em; color: #f5a623; margin-bottom: 6px; font-weight: bold; }
 .istoric-raspuns { font-size: 0.85em; line-height: 1.4; }
 .istoric-agent { display:inline-block; background:#333; color:#aaa; font-size:0.65em; padding: 2px 8px; border-radius: 10px; margin-top: 6px; }
-#input-area { display: flex; padding: 10px; gap: 8px; background: #16213e; border-top: 1px solid #333; align-items: center; }
-#mesaj { flex:1; padding: 12px 15px; border-radius: 25px; border: none; background: #0f3460; color: white; font-size: 1em; outline: none; }
+#input-area { display: flex; padding: 10px; gap: 8px; background: #16213e; border-top: 1px solid #333; align-items: center; flex-wrap: wrap; }
+#mesaj { flex:1; padding: 12px 15px; border-radius: 25px; border: none; background: #0f3460; color: white; font-size: 1em; outline: none; min-width: 150px; }
 #mesaj::placeholder { color: #aaa; }
 #trimite { padding: 12px 18px; border-radius: 25px; border: none; background: #e94560; color: white; cursor: pointer; font-size: 1em; }
 #microfon { padding: 12px; border-radius: 50%; border: none; background: #0f3460; color: white; cursor: pointer; font-size: 1.2em; width: 48px; height: 48px; }
 #microfon.activ { background: #e94560; animation: pulse 1s infinite; }
 #atasare { padding: 12px; border-radius: 50%; border: none; background: #0f3460; color: white; cursor: pointer; font-size: 1.2em; width: 48px; height: 48px; }
+.generare-buttons { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.generare-buttons button { padding: 8px 12px; border-radius: 20px; border: none; cursor: pointer; font-size: 0.8em; }
+.btn-img { background: #7ed321; color: #1a1a2e; }
+.btn-word { background: #f5a623; color: #1a1a2e; }
+.btn-pdf { background: #e94560; color: white; }
+#generare-status { font-size: 0.7em; color: #aaa; margin-top: 5px; text-align: center; }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 .loading { opacity: 0.6; font-style: italic; }
 .gol { text-align:center; color:#aaa; padding: 40px; }
+.generated-img { max-width: 300px; border-radius: 10px; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -171,7 +347,7 @@ h1 small { display:block; font-size:0.7em; color:#aaa; margin-top:2px; }
 <div id="chat-view">
   <div class="mesaj manager">
     <div class="nume">🧠 Manager AI</div>
-    Salut! Sunt Manager-ul tau AI. Am 9 agenti specializati si salvez tot istoricul conversatiilor! Cum te pot ajuta?
+    Salut! Sunt Manager-ul tau AI. Am 9 agenti specializati si pot genera imagini si documente! Cum te pot ajuta?
   </div>
 </div>
 <div id="istoric-view"></div>
@@ -182,6 +358,12 @@ h1 small { display:block; font-size:0.7em; color:#aaa; margin-top:2px; }
   <input id="mesaj" type="text" placeholder="Scrie sau vorbeste..." onkeypress="if(event.key==='Enter') trimite()">
   <button id="trimite" onclick="trimite()">Trimite</button>
 </div>
+<div class="generare-buttons">
+  <button class="btn-img" onclick="genereazaImagine()">🎨 Generează Imagine</button>
+  <button class="btn-word" onclick="genereazaDocument('word')">📝 Generează Word</button>
+  <button class="btn-pdf" onclick="genereazaDocument('pdf')">📄 Generează PDF</button>
+</div>
+<div id="generare-status"></div>
 <script>
 let recunoastere = null;
 let vorbeste = false;
@@ -322,6 +504,63 @@ async function trimite() {
   vorbireText(data.raspuns);
 }
 
+async function genereazaImagine() {
+  const input = document.getElementById('mesaj');
+  const prompt = input.value.trim();
+  if (!prompt) {
+    alert('Scrie ce imagine vrei să generez!');
+    return;
+  }
+  document.getElementById('generare-status').innerHTML = '🎨 Generez imaginea...';
+  try {
+    const r = await fetch('/genereaza-imagine', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: prompt})
+    });
+    const data = await r.json();
+    if (data.success && data.url) {
+      adauga('manager', '🎨 Generator AI', <img src="${data.url}" class="generated-img">);
+      document.getElementById('generare-status').innerHTML = '✅ Imagine generată!';
+    } else {
+      document.getElementById('generare-status').innerHTML = '❌ Eroare: ' + data.error;
+    }
+  } catch(e) {
+    document.getElementById('generare-status').innerHTML = '❌ Eroare: ' + e.message;
+  }
+}
+
+async function genereazaDocument(tip) {
+  const input = document.getElementById('mesaj');
+  const tema = input.value.trim();
+  if (!tema) {
+    alert('Scrie ce document vrei să generez!');
+    return;
+  }
+  document.getElementById('generare-status').innerHTML =📝 Generez document ${tip.toUpperCase()}...`;
+  try {
+    const r = await fetch('/genereaza-document', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tema: tema, tip: tip})
+    });
+    const data = await r.json();
+    if (data.success && data.file_data) {
+      const link = document.createElement('a');
+      link.href = 'data:application/octet-stream;base64,' + data.file_data;
+      link.download = data.filename;
+      link.click();
+      
+      adauga('manager', '📄 Generator Document', Am generat documentul "${data.filename}" despre: ${tema.substring(0, 100)}...);
+      document.getElementById('generare-status').innerHTML = ✅ Document ${tip.toUpperCase()} generat și descărcat!;
+    } else {
+      document.getElementById('generare-status').innerHTML = '❌ Eroare: ' + data.error;
+    }
+  } catch(e) {
+    document.getElementById('generare-status').innerHTML = '❌ Eroare: ' + e.message;
+  }
+}
+
 initVoice();
 </script>
 </body>
@@ -353,11 +592,11 @@ class Handler(BaseHTTPRequestHandler):
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
                 json={
-                    "model": "openrouter/free",
+                    "model": "google/gemini-2.0-flash-exp:free",
                     "messages": [
                         {"role": "user", "content": [
                             {"type": "image_url", "image_url": {"url": "data:" + tip + ";base64," + base64_img}},
-                            {"type": "text", "text": "Esti Manager AI. " + tema + ". Raspunde in romana corecta."}
+                            {"type": "text", "text": "Esti Manager AI. " + tema + ". Raspunde DOAR in limba romana cu diacritice."}
                         ]}
                     ]
                 }
@@ -365,8 +604,9 @@ class Handler(BaseHTTPRequestHandler):
             result = r.json()
             if "choices" in result:
                 raspuns = result["choices"][0]["message"]["content"]
+                raspuns = asigura_romana(raspuns)
             else:
-                raspuns = "Eroare la procesarea imaginii."
+                raspuns = "Eroare la procesarea imaginii. Te rog să încerci din nou."
             salveaza_istoric(tema, raspuns, "Agent Vizual")
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -374,6 +614,39 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"raspuns": raspuns, "agent": "Agent Vizual"}, ensure_ascii=False).encode())
             return
 
+        if self.path == '/genereaza-imagine':
+            data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            prompt = data.get('prompt', '')
+            url, eroare = genereaza_imagine(prompt)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            if url:
+                self.wfile.write(json.dumps({"url": url, "success": True}).encode())
+            else:
+                self.wfile.write(json.dumps({"error": eroare, "success": False}).encode())
+            return
+
+        if self.path == '/genereaza-document':
+            data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            tema = data.get('tema', '')
+            tip = data.get('tip', 'word')
+            file_data, nume_fisier, continut = genereaza_document_dupa_tema(tema, tip)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            if file_data:
+                self.wfile.write(json.dumps({
+                    "success": True, 
+                    "file_data": file_data, 
+                    "filename": nume_fisier,
+                    "continut": continut
+                }).encode())
+            else:
+                self.wfile.write(json.dumps({"success": False, "error": nume_fisier}).encode())
+            return
+
+        # Endpoint-ul principal pentru chat
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         tema = data['tema']
         raspuns, agent_nume = manager_ai(tema)
@@ -384,4 +657,6 @@ class Handler(BaseHTTPRequestHandler):
 
 print("Aplicatia porneste...")
 print("Deschide in browser: http://localhost:8080")
+print("🎨 Pentru generare imagini, adauga variabila REPLICATE_API_TOKEN")
+print("📝 Pentru documente Word/PDF, asigura-te ca ai instalat python-docx si reportlab")
 HTTPServer(('', 8080), Handler).serve_forever()
