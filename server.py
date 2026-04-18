@@ -18,13 +18,16 @@ REPLICATE_KEY = os.environ.get("REPLICATE_API_TOKEN", "").strip()
 print(f"=== DIAGNOSTIC ===")
 print(f"OPENROUTER_KEY setat: {bool(KEY)}")
 print(f"REPLICATE_API_TOKEN setat: {bool(REPLICATE_KEY)}")
-print(f"KEY primii 20 caractere: {KEY[:20] if KEY else 'N/A'}...")
+if KEY:
+    print(f"KEY primi 20 caractere: {KEY[:20]}...")
+else:
+    print("KEY: N/A")
 print(f"=================")
 
 if not KEY:
-    print("⚠️ ATENȚIE: OPENROUTER_KEY nu este setată! Chat-ul nu va funcționa.")
+    print("⚠️ ATENȚIE: OPENROUTER_KEY nu este setată! Chatul nu va funcționa.")
 
-# Încearcă să importe replicate, dar nu crapă dacă lipsește
+# Încearcă să importe replicate
 try:
     import replicate
     REPLICATE_AVAILABLE = bool(REPLICATE_KEY)
@@ -32,7 +35,7 @@ try:
 except ImportError:
     replicate = None
     REPLICATE_AVAILABLE = False
-    print(f"⚠️ Replicate nu este instalat. Generarea imagini va fi dezactivată.")
+    print(f"⚠️ Replicate nu este instalat")
 
 AGENTI = {
     "voluntari": {
